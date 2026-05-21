@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<title>Stock Count Survey</title>
+<style>
+  :root{
+    --navy:#0B1E3C; --blue:#1A5CFF; --green:#0D9B6C; --amber:#D97706;
+    --red:#DC2626; --orange:#EA580C; --teal:#0891B2; --purple:#7C3AED;
+    --border:#E2E8F0; --bg:#F1F5F9; --surface:#fff; --muted:#64748B;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--navy);
+    -webkit-font-smoothing:antialiased;padding-bottom:120px}
+  .wrap{max-width:560px;margin:0 auto;padding:16px}
+  .topbar{background:var(--navy);color:#fff;padding:16px;position:sticky;top:0;z-index:20}
+  .topbar h1{font-size:18px;font-weight:700}
+  .topbar p{font-size:12px;opacity:.7;margin-top:2px}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    padding:16px;margin-bottom:14px}
+  .card h2{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--navy)}
+  label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px}
+  input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--border);
+    border-radius:8px;font-family:inherit;font-size:14px;background:#fff;color:var(--navy)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue);
+    box-shadow:0 0 0 3px rgba(26,92,255,.12)}
+  textarea{resize:vertical;min-height:64px}
+  .field{margin-bottom:14px}
+  .row{display:flex;gap:10px}
+  .row>.field{flex:1}
+  .req:after{content:" *";color:var(--red)}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:12px 18px;border:none;border-radius:8px;font-family:inherit;font-size:14px;
+    font-weight:600;cursor:pointer;transition:filter .15s}
+  .btn:active{filter:brightness(.92)}
+  .btn-primary{background:var(--blue);color:#fff}
+  .btn-green{background:var(--green);color:#fff}
+  .btn-ghost{background:#fff;color:var(--navy);border:1px solid var(--border)}
+  .btn-danger{background:#fff;color:var(--red);border:1px solid var(--red);padding:8px 12px;font-size:12px}
+  .btn-block{width:100%}
+
+  /* searchable dropdown */
+  .combo{position:relative}
+  .combo-list{position:absolute;top:100%;left:0;right:0;z-index:30;background:#fff;
+    border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:260px;
+    overflow:auto;box-shadow:0 10px 30px rgba(11,30,60,.12);display:none}
+  .combo-list.open{display:block}
+  .combo-item{padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--border)}
+  .combo-item:last-child{border-bottom:none}
+  .combo-item:hover,.combo-item.active{background:#EFF4FF}
+  .combo-item .nm{font-size:14px;font-weight:600}
+  .combo-item .sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .combo-empty{padding:14px;text-align:center;color:var(--muted);font-size:13px}
+
+  /* SKU rows */
+  .sku{border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:#FAFBFD}
+  .sku-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px}
+  .sku-head .nm{font-size:14px;font-weight:600}
+  .sku-head .meta{font-size:12px;color:var(--muted);margin-top:2px}
+  .sku-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .sku-foot{display:flex;justify-content:space-between;align-items:center;margin-top:10px;
+    padding-top:10px;border-top:1px dashed var(--border)}
+  .sku-val{font-size:14px;font-weight:700}
+
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+  .b-good{background:#E7F7F0;color:var(--green)}
+  .b-exp{background:#FFF1E6;color:var(--orange)}
+  .b-dead{background:#FDE8E8;color:var(--red)}
+
+  /* summary bar */
+  .summary{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);
+    box-shadow:0 -8px 24px rgba(11,30,60,.08);z-index:25}
+  .summary-inner{max-width:560px;margin:0 auto;padding:10px 16px}
+  .sum-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:10px}
+  .sum-cell{text-align:center}
+  .sum-cell .v{font-size:15px;font-weight:700}
+  .sum-cell .l{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
+  .sum-cell.good .v{color:var(--green)} .sum-cell.exp .v{color:var(--orange)} .sum-cell.dead .v{color:var(--red)}
+
+  /* login + success overlays */
+  .screen{position:fixed;inset:0;background:var(--bg);z-index:50;display:flex;
+    align-items:center;justify-content:center;padding:20px}
+  .screen.hide{display:none}
+  .login-box{background:#fff;border-radius:14px;padding:28px;max-width:380px;width:100%;
+    box-shadow:0 20px 60px rgba(11,30,60,.18);text-align:center}
+  .login-box .logo{width:56px;height:56px;border-radius:14px;background:var(--navy);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;margin:0 auto 14px}
+  .login-box h2{font-size:20px;margin-bottom:4px}
+  .login-box p{font-size:13px;color:var(--muted);margin-bottom:18px}
+  .err{color:var(--red);font-size:12px;margin-top:8px;min-height:16px}
+
+  .success-icon{width:72px;height:72px;border-radius:50%;background:#E7F7F0;color:var(--green);
+    display:flex;align-items:center;justify-content:center;font-size:38px;margin:0 auto 16px}
+  .sub-id{font-family:monospace;background:var(--bg);padding:8px 12px;border-radius:8px;
+    font-size:13px;margin:12px 0;word-break:break-all}
+
+  .hint{font-size:12px;color:var(--muted);margin-top:4px}
+  .tl-tag{font-size:12px;color:var(--blue);font-weight:600;margin-top:6px;min-height:16px}
+  .spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);
+    border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;
+    padding:10px 16px;border-radius:8px;font-size:13px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="screen" id="loginScreen">
+  <div class="login-box">
+    <div class="logo">SC</div>
+    <h2>Stock Count Survey</h2>
+    <p>Enter the access password to continue</p>
+    <input type="password" id="pwInput" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="err" id="pwErr"></div>
+    <button class="btn btn-primary btn-block" style="margin-top:6px" onclick="doLogin()">Sign In</button>
+  </div>
+</div>
+
+<!-- SUCCESS -->
+<div class="screen hide" id="successScreen">
+  <div class="login-box">
+    <div class="success-icon">&#10003;</div>
+    <h2>Submitted!</h2>
+    <p>Your stock count has been recorded.</p>
+    <div class="sub-id" id="successId"></div>
+    <button class="btn btn-green btn-block" onclick="resetForm()">Submit Another</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+  <div class="topbar">
+    <div class="wrap" style="padding:0">
+      <h1>Stock Count Survey</h1>
+      <p>Product Ambassador inventory submission</p>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <!-- PA + visit info -->
+    <div class="card">
+      <h2>Visit Details</h2>
+      <div class="field">
+        <label class="req">PA Name &amp; Store</label>
+        <div class="combo">
+          <input type="text" id="paSearch" autocomplete="off" placeholder="Loading PA list..."
+            oninput="filterPA()" onfocus="openPA()">
+          <div class="combo-list" id="paList"></div>
+        </div>
+        <div class="tl-tag" id="tlTag"></div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label class="req">Location</label>
+          <select id="location">
+            <option value="">Select...</option>
+            <option>Phnom Penh</option><option>Siem Reap</option><option>Battambang</option>
+            <option>Kampong Cham</option><option>Sihanoukville</option><option>Takeo</option>
+            <option>Kampot</option><option>Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="req">Count Date</label>
+          <input type="date" id="countDate">
+        </div>
+      </div>
+      <div class="field">
+        <label class="req">Batch Code Number</label>
+        <input type="text" id="batchCode" placeholder="e.g. BC-2025-001">
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label>Notes / Remarks</label>
+        <textarea id="notes" placeholder="Optional notes about this count..."></textarea>
+      </div>
+    </div>
+
+    <!-- SKU search -->
+    <div class="card">
+      <h2>Add Materials</h2>
+      <div class="combo">
+        <input type="text" id="skuSearch" autocomplete="off" placeholder="Loading SKU list..."
+          oninput="filterSKU()" onfocus="openSKU()">
+        <div class="combo-list" id="skuList"></div>
+      </div>
+      <p class="hint">Search by product name or code. Tap a result to add it.</p>
+    </div>
+
+    <!-- added SKUs -->
+    <div id="skuItems"></div>
+  </div>
+
+  <!-- summary + submit -->
+  <div class="summary">
+    <div class="summary-inner">
+      <div class="sum-grid">
+        <div class="sum-cell"><div class="v" id="sTotal">0</div><div class="l">Total QTY</div></div>
+        <div class="sum-cell good"><div class="v" id="sGood">0</div><div class="l">Good</div></div>
+        <div class="sum-cell exp"><div class="v" id="sExp">0</div><div class="l">&le;90d</div></div>
+        <div class="sum-cell dead"><div class="v" id="sDead">0</div><div class="l">Expired</div></div>
+        <div class="sum-cell"><div class="v" id="sVal">$0</div><div class="l">Value</div></div>
+      </div>
+      <button class="btn btn-green btn-block" id="submitBtn" onclick="submitForm()">Submit Stock Count</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== CONFIG ===================== */
+var PUBLISHED_SHEET_URL = '[YOUR_PUBLISHED_SHEET_URL]';
+var PA_GID  = '[PA_GID]';
+var SKU_GID = '[SKU_GID]';
+var FETCH_TIMEOUT = 8000;
+
+/* ===================== STATE ===================== */
+var PA_LIST = [];
+var SKU_LIST = [];
+var selectedPA = null;
+var items = []; // {code,name,unitPrice,qty,expiryDate,batchCode}
+var paActiveIdx = -1, skuActiveIdx = -1;
+var paFiltered = [], skuFiltered = [];
+
+/* ===================== LOGIN ===================== */
+function doLogin(){
+  var v = document.getElementById('pwInput').value;
+  if(v === 'StockCount@2025'){
+    document.getElementById('loginScreen').classList.add('hide');
+    document.getElementById('app').style.display = 'block';
+    initForm();
+  } else {
+    document.getElementById('pwErr').textContent = 'Incorrect password. Try again.';
+  }
+}
+
+function initForm(){
+  document.getElementById('countDate').value = todayISO();
+  loadMasters();
+  renderItems();
+}
+
+function todayISO(){
+  var d = new Date(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return d.getFullYear()+'-'+m+'-'+day;
+}
+
+/* ===================== LIVE FETCH ===================== */
+function csvUrl(gid){ return PUBLISHED_SHEET_URL+'?gid='+gid+'&single=true&output=csv'; }
+
+function fetchWithTimeout(url){
+  var ctrl = new AbortController();
+  var t = setTimeout(function(){ ctrl.abort(); }, FETCH_TIMEOUT);
+  return fetch(url, {signal: ctrl.signal})
+    .then(function(r){ clearTimeout(t); if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); });
+}
+
+function loadMasters(){
+  // PA list
+  fetchWithTimeout(csvUrl(PA_GID))
+    .then(function(txt){
+      PA_LIST = parsePA(txt);
+      document.getElementById('paSearch').placeholder = 'Search PA name or store...';
+    })
+    .catch(function(){
+      PA_LIST = [];
+      document.getElementById('paSearch').placeholder = 'PA list unavailable — type manually';
+    });
+  // SKU list
+  fetchWithTimeout(csvUrl(SKU_GID))
+    .then(function(txt){
+      SKU_LIST = parseSKU(txt);
+      document.getElementById('skuSearch').placeholder = 'Search product name or code...';
+    })
+    .catch(function(){
+      SKU_LIST = [];
+      document.getElementById('skuSearch').placeholder = 'SKU list unavailable';
+    });
+}
+
+function parsePA(txt){
+  var rows = parseCSV(txt); if(!rows.length) return [];
+  var head = rows.shift().map(function(h){return h.trim().toLowerCase();});
+  var ix = {}; head.forEach(function(h,i){ix[h]=i;});
+  var blocked = /resign|inactive|maternity|leave|terminated/i;
+  var out = [];
+  rows.forEach(function(r){
+    var remarks = get(r,ix['remarks']);
+    if(blocked.test(remarks)) return;
+    var pa = get(r,ix['pa name']); if(!pa) return;
+    var store = get(r,ix['outlet name']);
+    out.push({
+      paName: pa, outlet: store,
+      teamLeader: get(r,ix['team leader name']),
+      label: pa+' | '+store,
+      lat: get(r,ix['latitude']), lon: get(r,ix['longitude'])
+    });
+  });
+  return out;
+}
+
+function parseSKU(txt){
+  var rows = parseCSV(txt); if(!rows.length) return [];
+  var head = rows.shift().map(function(h){return h.trim().toLowerCase();});
+  var ix = {}; head.forEach(function(h,i){ix[h]=i;});
+  var out = [];
+  rows.forEach(function(r){
+    var name = get(r,ix['description']); if(!name) return;
+    var sap = get(r,ix['sap code']);
+    var price = num(get(r,ix['price/unit incl.vat'])) || num(get(r,ix['price/unit excl.vat']));
+    out.push({
+      code: sap || get(r,ix['product code']),
+      name: name,
+      unitPrice: price
+    });
+  });
+  return out;
+}
+
+/* ===================== PA COMBO ===================== */
+function openPA(){ filterPA(); }
+function filterPA(){
+  var q = document.getElementById('paSearch').value.trim().toLowerCase();
+  var list = document.getElementById('paList');
+  if(!PA_LIST.length){
+    list.innerHTML = '<div class="combo-empty">Loading PA list...</div>';
+    list.classList.add('open'); return;
+  }
+  paFiltered = PA_LIST.filter(function(p){
+    return !q || p.paName.toLowerCase().indexOf(q)>=0 || p.outlet.toLowerCase().indexOf(q)>=0;
+  }).slice(0,50);
+  paActiveIdx = -1;
+  if(!paFiltered.length){
+    list.innerHTML = '<div class="combo-empty">No matching PA</div>';
+  } else {
+    list.innerHTML = paFiltered.map(function(p,i){
+      return '<div class="combo-item" data-i="'+i+'" onclick="pickPA('+i+')">'+
+        '<div class="nm">'+esc(p.paName)+'</div>'+
+        '<div class="sub">'+esc(p.outlet)+(p.teamLeader?' &middot; TL: '+esc(p.teamLeader):'')+'</div></div>';
+    }).join('');
+  }
+  list.classList.add('open');
+}
+function pickPA(i){
+  selectedPA = paFiltered[i];
+  document.getElementById('paSearch').value = selectedPA.label;
+  document.getElementById('tlTag').textContent = selectedPA.teamLeader ? 'Team Leader: '+selectedPA.teamLeader : '';
+  document.getElementById('paList').classList.remove('open');
+}
+
+/* ===================== SKU COMBO ===================== */
+function openSKU(){ filterSKU(); }
+function filterSKU(){
+  var q = document.getElementById('skuSearch').value.trim().toLowerCase();
+  var list = document.getElementById('skuList');
+  if(!SKU_LIST.length){
+    list.innerHTML = '<div class="combo-empty">Loading SKU list...</div>';
+    list.classList.add('open'); return;
+  }
+  skuFiltered = SKU_LIST.filter(function(s){
+    return !q || s.name.toLowerCase().indexOf(q)>=0 || String(s.code).toLowerCase().indexOf(q)>=0;
+  }).slice(0,50);
+  if(!skuFiltered.length){
+    list.innerHTML = '<div class="combo-empty">No matching SKU</div>';
+  } else {
+    list.innerHTML = skuFiltered.map(function(s,i){
+      return '<div class="combo-item" onclick="addSKU('+i+')">'+
+        '<div class="nm">'+esc(s.name)+'</div>'+
+        '<div class="sub">'+esc(s.code)+' &middot; $'+fmt(s.unitPrice)+'/unit</div></div>';
+    }).join('');
+  }
+  list.classList.add('open');
+}
+function addSKU(i){
+  var s = skuFiltered[i];
+  items.push({code:s.code, name:s.name, unitPrice:s.unitPrice, qty:'', expiryDate:'', batchCode:''});
+  document.getElementById('skuSearch').value = '';
+  document.getElementById('skuList').classList.remove('open');
+  renderItems();
+}
+
+/* ===================== ITEM RENDER ===================== */
+function renderItems(){
+  var wrap = document.getElementById('skuItems');
+  if(!items.length){ wrap.innerHTML=''; updateSummary(); return; }
+  wrap.innerHTML = items.map(function(it,i){
+    var st = statusOf(it.expiryDate);
+    var val = (num(it.qty) * (it.unitPrice||0));
+    return '<div class="sku">'+
+      '<div class="sku-head"><div><div class="nm">'+esc(it.name)+'</div>'+
+        '<div class="meta">'+esc(it.code)+' &middot; $'+fmt(it.unitPrice)+'/unit</div></div>'+
+        '<button class="btn btn-danger" onclick="removeItem('+i+')">Remove</button></div>'+
+      '<div class="sku-grid">'+
+        '<div><label class="req">QTY</label><input type="number" min="0" value="'+att(it.qty)+
+          '" oninput="upd('+i+',\'qty\',this.value)"></div>'+
+        '<div><label class="req">Expiry Date</label><input type="date" value="'+att(it.expiryDate)+
+          '" oninput="upd('+i+',\'expiryDate\',this.value)"></div>'+
+        '<div style="grid-column:1/-1"><label class="req">Batch Code</label><input type="text" value="'+att(it.batchCode)+
+          '" placeholder="Batch code" oninput="upd('+i+',\'batchCode\',this.value)"></div>'+
+      '</div>'+
+      '<div class="sku-foot"><span class="badge '+st.cls+'">'+st.label+'</span>'+
+        '<span class="sku-val">$'+fmt(val)+'</span></div>'+
+    '</div>';
+  }).join('');
+  updateSummary();
+}
+function upd(i,k,v){ items[i][k]=v; if(k==='expiryDate'||k==='qty') renderItems(); else updateSummary(); }
+function removeItem(i){ items.splice(i,1); renderItems(); }
+
+function statusOf(exp){
+  if(!exp) return {cls:'b-good',label:'No date',days:null};
+  var d = Math.floor((new Date(exp) - new Date())/86400000);
+  if(d < 0) return {cls:'b-dead',label:'Expired',days:d};
+  if(d <= 90) return {cls:'b-exp',label:'Expiring '+d+'d',days:d};
+  return {cls:'b-good',label:'Good',days:d};
+}
+
+function updateSummary(){
+  var total=0, good=0, exp=0, dead=0, val=0;
+  items.forEach(function(it){
+    var q = num(it.qty); total+=q; val += q*(it.unitPrice||0);
+    var s = statusOf(it.expiryDate);
+    if(s.days===null || s.days>90) good+=q; else if(s.days<0) dead+=q; else exp+=q;
+  });
+  document.getElementById('sTotal').textContent = total;
+  document.getElementById('sGood').textContent = good;
+  document.getElementById('sExp').textContent = exp;
+  document.getElementById('sDead').textContent = dead;
+  document.getElementById('sVal').textContent = '$'+fmt(val);
+}
+
+/* ===================== SUBMIT ===================== */
+function submitForm(){
+  if(!selectedPA){ return toast('Please select a PA.'); }
+  if(!document.getElementById('location').value){ return toast('Please select a location.'); }
+  if(!document.getElementById('countDate').value){ return toast('Please set the count date.'); }
+  if(!document.getElementById('batchCode').value.trim()){ return toast('Batch Code Number is required.'); }
+  if(!items.length){ return toast('Add at least one material.'); }
+  for(var i=0;i<items.length;i++){
+    if(!(num(items[i].qty)>0)) return toast('QTY must be greater than 0 for all items.');
+    if(!items[i].expiryDate) return toast('Expiry date is required for all items.');
+    if(!items[i].batchCode.trim()) return toast('Batch code is required for all items.');
+  }
+
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Submitting...';
+
+  getGPS(function(gps){
+    var payload = {
+      paName: selectedPA.label,
+      location: document.getElementById('location').value,
+      countDate: document.getElementById('countDate').value,
+      batchCode: document.getElementById('batchCode').value.trim(),
+      notes: document.getElementById('notes').value.trim(),
+      gpsLat: gps.lat, gpsLon: gps.lon,
+      items: items.map(function(it){
+        return {code:it.code, name:it.name, qty:num(it.qty),
+          expiryDate:it.expiryDate, batchCode:it.batchCode.trim(),
+          status:statusOf(it.expiryDate).label};
+      })
+    };
+    google.script.run
+      .withSuccessHandler(onSubmitOk)
+      .withFailureHandler(onSubmitFail)
+      .submitInventory(payload);
+  });
+}
+function onSubmitOk(res){
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = false; btn.textContent = 'Submit Stock Count';
+  if(res && res.ok){
+    document.getElementById('successId').textContent = res.submissionId;
+    document.getElementById('successScreen').classList.remove('hide');
+  } else {
+    toast((res && res.error) || 'Submission failed.');
+  }
+}
+function onSubmitFail(err){
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = false; btn.textContent = 'Submit Stock Count';
+  toast('Submission failed: '+err);
+}
+
+function getGPS(cb){
+  if(!navigator.geolocation){ return cb({lat:'',lon:''}); }
+  var done=false;
+  var t = setTimeout(function(){ if(!done){done=true; cb({lat:'',lon:''});} }, 5000);
+  navigator.geolocation.getCurrentPosition(
+    function(pos){ if(!done){done=true; clearTimeout(t);
+      cb({lat:pos.coords.latitude, lon:pos.coords.longitude});} },
+    function(){ if(!done){done=true; clearTimeout(t); cb({lat:'',lon:''});} },
+    {timeout:5000, maximumAge:60000}
+  );
+}
+
+function resetForm(){
+  document.getElementById('successScreen').classList.add('hide');
+  selectedPA = null; items = [];
+  document.getElementById('paSearch').value = '';
+  document.getElementById('tlTag').textContent = '';
+  document.getElementById('location').value = '';
+  document.getElementById('batchCode').value = '';
+  document.getElementById('notes').value = '';
+  document.getElementById('countDate').value = todayISO();
+  document.getElementById('skuSearch').value = '';
+  renderItems();
+  window.scrollTo(0,0);
+}
+
+/* ===================== HELPERS ===================== */
+function parseCSV(text){
+  var rows=[],row=[],f='',i=0,q=false;
+  text = String(text).replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  while(i<text.length){
+    var c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i+=2;continue;} q=false;i++;continue;} f+=c;i++;continue; }
+    if(c==='"'){q=true;i++;continue;}
+    if(c===','){row.push(f);f='';i++;continue;}
+    if(c==='\n'){row.push(f);rows.push(row);row=[];f='';i++;continue;}
+    f+=c;i++;
+  }
+  if(f!==''||row.length){row.push(f);rows.push(row);}
+  return rows.filter(function(r){return r.length && !(r.length===1 && r[0]==='');});
+}
+function get(r,i){ return (i===undefined||r[i]===undefined)?'':String(r[i]).trim(); }
+function num(v){ var n=parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?0:n; }
+function fmt(n){ return (Math.round((+n||0)*100)/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function att(s){ return esc(String(s===undefined||s===null?'':s)); }
+var toastT;
+function toast(msg){
+  var el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(function(){el.classList.remove('show');},2600);
+}
+/* close combos on outside click */
+document.addEventListener('click',function(e){
+  if(!e.target.closest('.combo')){
+    document.getElementById('paList').classList.remove('open');
+    document.getElementById('skuList').classList.remove('open');
+  }
+});
+</script>
+</body>
+</html>
