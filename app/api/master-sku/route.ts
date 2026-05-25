@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import Papa from "papaparse";
 
 // LIVE master SKU feed for the OOS detector.
-// Reads the "Maser Material Code" tab of the master workbook at request time
-// and maps every SKU to its Material Group Code (col G) + Name (col H), so the
-// dashboard counts coverage per group (42), not per SKU (97). FOC items are
-// excluded. If the sheet is unreachable, it falls back to the baked-in 42-group
-// snapshot below, so the endpoint never breaks.
+// Reads the "Maser Material Code" tab of the master workbook at request time,
+// maps each SKU to its Material Group Code (col G) + Name (col H), then collapses
+// to one row per group so the feed IS the ~42 groups for coverage counting, not
+// the ~97 individual SKUs. FOC items are excluded. If the sheet is unreachable,
+// it falls back to the baked-in snapshot below, so the endpoint never breaks.
 
 type MasterSKU = {
   code: string;
@@ -746,6 +746,26 @@ const FALLBACK_SKUS: MasterSKU[] = [
   }
 ];
 
+// Collapse SKU rows to one entry per Material Group Code (col G). Keeps the
+// same record shape: code/name become the group's code/name; brand + subBrand
+// are taken from the first SKU seen in that group.
+function collapseToGroups(skus: MasterSKU[]): MasterSKU[] {
+  const byGroup = new Map<string, MasterSKU>();
+  for (const s of skus) {
+    const key = s.groupCode || s.code;
+    if (byGroup.has(key)) continue;
+    byGroup.set(key, {
+      code: key,
+      name: s.groupName || s.name,
+      brand: s.brand,
+      subBrand: s.subBrand,
+      groupCode: key,
+      groupName: s.groupName || s.name,
+    });
+  }
+  return Array.from(byGroup.values());
+}
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -834,7 +854,7 @@ export async function GET() {
       const text = await res.text();
       // Google returns an HTML page when a sheet isn't published.
       if (!/^\s*<(!doctype|html)/i.test(text)) {
-        const live = parseMaster(text);
+        const live = collapseToGroups(parseMaster(text));
         if (live.length) {
           return NextResponse.json({ skuList: live, source: "live", count: live.length });
         }
@@ -843,5 +863,6 @@ export async function GET() {
   } catch {
     // fall through to snapshot
   }
-  return NextResponse.json({ skuList: FALLBACK_SKUS, source: "fallback", count: FALLBACK_SKUS.length });
+  const groups = collapseToGroups(FALLBACK_SKUS);
+  return NextResponse.json({ skuList: groups, source: "fallback", count: groups.length });
 }
