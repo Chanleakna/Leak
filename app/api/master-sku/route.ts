@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import Papa from "papaparse";
 
-// Auto-generated from the "Maser Material Code" master tab.
-// 90 non-FOC SKUs collapsed into 42 Material Groups (FOC items excluded).
-// Each SKU carries its Material Group Code (groupCode) + Name (groupName)
-// so the OOS detector counts coverage per group, not per SKU.
+// LIVE master SKU feed for the OOS detector.
+// Reads the "Maser Material Code" tab of the master workbook at request time
+// and maps every SKU to its Material Group Code (col G) + Name (col H), so the
+// dashboard counts coverage per group (42), not per SKU (97). FOC items are
+// excluded. If the sheet is unreachable, it falls back to the baked-in 42-group
+// snapshot below, so the endpoint never breaks.
 
 type MasterSKU = {
   code: string;
@@ -14,7 +17,13 @@ type MasterSKU = {
   groupName: string;
 };
 
-const SKU_LIST: MasterSKU[] = [
+// Source sheet (override in Vercel with NEXT_PUBLIC_MATERIAL_URL / _GID).
+const MATERIAL_URL =
+  process.env.NEXT_PUBLIC_MATERIAL_URL ||
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQHX9l23tQeTomduyJwli60oxoKCFDC388o9qcj1qdC4d9sJDBeKkovIzxKzpo4P7zT_W5bwtF3jPc4/pubhtml";
+const MATERIAL_GID = process.env.NEXT_PUBLIC_MATERIAL_GID || "202207064";
+
+const FALLBACK_SKUS: MasterSKU[] = [
   {
     "code": "101341233",
     "name": "Similac Mum Gold Vanilla VN 900G 1X12",
@@ -737,8 +746,102 @@ const SKU_LIST: MasterSKU[] = [
   }
 ];
 
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-export function GET() {
-  return NextResponse.json({ skuList: SKU_LIST });
+// Turn any Google Sheets URL into a CSV export URL for a given tab gid.
+function toCsvUrl(rawUrl: string, gid: string): string {
+  const url = (rawUrl || "").trim();
+  if (!url) return "";
+  if (/output=csv|format=csv/.test(url)) {
+    return /[?&]gid=/.test(url) ? url : `${url}${url.includes("?") ? "&" : "?"}gid=${gid}`;
+  }
+  const pub = url.match(/\/spreadsheets\/d\/e\/([^/]+)/);
+  if (pub) {
+    return `https://docs.google.com/spreadsheets/d/e/${pub[1]}/pub?output=csv&gid=${encodeURIComponent(gid)}&single=true`;
+  }
+  const reg = url.match(/\/spreadsheets\/d\/([^/]+)/);
+  if (reg) {
+    return `https://docs.google.com/spreadsheets/d/${reg[1]}/export?format=csv&gid=${encodeURIComponent(gid)}`;
+  }
+  return url;
+}
+
+// "210148791.0" -> "210148791"; trims thousands separators / spaces.
+function cleanCode(v: unknown): string {
+  let s = String(v ?? "").trim().replace(/[,\s]/g, "");
+  if (/^-?\d+\.0+$/.test(s)) s = s.replace(/\.0+$/, "");
+  return s;
+}
+
+function findIdx(header: string[], names: string[]): number {
+  const norm = header.map((h) => String(h).trim().toLowerCase());
+  for (const n of names) {
+    const i = norm.indexOf(n);
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
+function parseMaster(csv: string): MasterSKU[] {
+  const grid = (Papa.parse<string[]>(csv, { skipEmptyLines: "greedy" }).data as string[][]).filter(
+    (r) => Array.isArray(r) && r.some((c) => String(c).trim() !== "")
+  );
+  if (!grid.length) return [];
+  // Find the header row (the one that actually names the columns).
+  let h = 0;
+  for (let i = 0; i < Math.min(grid.length, 5); i++) {
+    if (grid[i].some((c) => /material\s*group\s*code/i.test(String(c)))) { h = i; break; }
+  }
+  const header = grid[h];
+  const codeI = findIdx(header, ["material code", "code"]);
+  const nameI = findIdx(header, ["material name", "name", "description"]);
+  const brandI = findIdx(header, ["brand"]);
+  const subI = findIdx(header, ["sub-brand", "sub brand", "subbrand"]);
+  const gCodeI = findIdx(header, ["material group code", "group code"]);
+  const gNameI = findIdx(header, ["material group name", "group name"]);
+  if (codeI < 0 || gCodeI < 0) return [];
+
+  const out: MasterSKU[] = [];
+  for (let r = h + 1; r < grid.length; r++) {
+    const row = grid[r];
+    const code = cleanCode(row[codeI]);
+    const name = String(row[nameI] ?? "").trim();
+    if (!code || !name) continue;
+    if (name.toUpperCase().endsWith("FOC")) continue; // drop free-of-charge items
+    const brand = String(row[brandI] ?? "").trim() || "Other";
+    out.push({
+      code,
+      name,
+      brand,
+      subBrand: String(row[subI] ?? "").trim() || brand,
+      groupCode: cleanCode(row[gCodeI]) || code,
+      groupName: String(row[gNameI] ?? "").trim() || name,
+    });
+  }
+  return out;
+}
+
+export async function GET() {
+  try {
+    const csvUrl = toCsvUrl(MATERIAL_URL, MATERIAL_GID);
+    const res = await fetch(csvUrl, {
+      cache: "no-store",
+      redirect: "follow",
+      headers: { "user-agent": "Mozilla/5.0 (dashboard-proxy)" },
+    });
+    if (res.ok) {
+      const text = await res.text();
+      // Google returns an HTML page when a sheet isn't published.
+      if (!/^\s*<(!doctype|html)/i.test(text)) {
+        const live = parseMaster(text);
+        if (live.length) {
+          return NextResponse.json({ skuList: live, source: "live", count: live.length });
+        }
+      }
+    }
+  } catch {
+    // fall through to snapshot
+  }
+  return NextResponse.json({ skuList: FALLBACK_SKUS, source: "fallback", count: FALLBACK_SKUS.length });
 }
